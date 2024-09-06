@@ -3,70 +3,73 @@ import java.net.*;
 import java.util.*;
 
 public class ChatServer {
-    private static final int PORT = 12345; // You can change this to your desired port
-    private static Set<ClientHandler> clientHandlers = new HashSet<>();
+    private static final int PORT = 12345;
+    private static final Set<ClientHandler> clients = new HashSet<>();
 
     public static void main(String[] args) {
-        System.out.println("Chat server started...");
         try (ServerSocket serverSocket = new ServerSocket(PORT)) {
+            System.out.println("Chat server started on port " + PORT);
+
             while (true) {
                 Socket clientSocket = serverSocket.accept();
-                System.out.println("New client connected");
+                System.out.println("New client connected: " + clientSocket.getInetAddress().getHostAddress());
+
                 ClientHandler clientHandler = new ClientHandler(clientSocket);
-                clientHandlers.add(clientHandler);
-                new Thread(clientHandler).start();
+                clients.add(clientHandler);
+                clientHandler.start();
             }
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    static void broadcastMessage(String message, ClientHandler excludeClient) {
-        for (ClientHandler clientHandler : clientHandlers) {
-            if (clientHandler != excludeClient) {
-                clientHandler.sendMessage(message);
+    private static void broadcastMessage(String message, ClientHandler sender) {
+        for (ClientHandler client : clients) {
+            if (client != sender) {
+                client.sendMessage(message);
             }
         }
     }
 
-    static class ClientHandler implements Runnable {
-        private Socket socket;
-        private PrintWriter out;
-        private BufferedReader in;
+    private static class ClientHandler extends Thread {
+        private final Socket clientSocket;
+        private final BufferedReader in;
+        private final PrintWriter out;
 
-        public ClientHandler(Socket socket) {
-            this.socket = socket;
+        public ClientHandler(Socket clientSocket) throws IOException {
+            this.clientSocket = clientSocket;
+            in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+            out = new PrintWriter(clientSocket.getOutputStream(), true);
         }
 
         @Override
         public void run() {
             try {
-                in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-                out = new PrintWriter(socket.getOutputStream(), true);
-
                 String clientName = in.readLine();
-                System.out.println(clientName + " has joined the chat.");
-                broadcastMessage(clientName + " has joined the chat.", this);
+                System.out.println(clientName + " connected");
 
-                String message;
-                while ((message = in.readLine()) != null) {
-                    System.out.println(clientName + ": " + message);
+                while (true) {
+                    String message = in.readLine();
+                    if (message == null) {
+                        break;
+                    }
                     broadcastMessage(clientName + ": " + message, this);
                 }
             } catch (IOException e) {
                 e.printStackTrace();
             } finally {
                 try {
-                    socket.close();
+                    in.close();
+                    out.close();
+                    clientSocket.close();
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
-                clientHandlers.remove(this);
-                System.out.println("Client disconnected");
+                clients.remove(this);
             }
         }
 
-        void sendMessage(String message) {
+        public void sendMessage(String message) {
             out.println(message);
         }
     }
