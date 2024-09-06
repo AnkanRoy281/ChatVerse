@@ -1,61 +1,42 @@
 import java.io.*;
 import java.net.*;
-import java.util.*;
+import java.util.Scanner;
 
-public class ChatServer {
-    private static final int PORT = 12345; // Port number for the server
-    private static Set<PrintWriter> clientWriters = new HashSet<>();
+public class ChatClient {
+    private static final String SERVER_IP =  "192.168.0.113"; // Replace with the server's IP address
+    private static final int SERVER_PORT = 12345;
 
     public static void main(String[] args) {
-        System.out.println("Chat server started...");
-        try (ServerSocket serverSocket = new ServerSocket(PORT)) {
+        try (Socket socket = new Socket(SERVER_IP, SERVER_PORT);
+             PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+             Scanner scanner = new Scanner(System.in)) {
+
+            System.out.print("Enter your name: ");
+            String name = scanner.nextLine();
+            out.println(name);
+
+            new Thread(() -> {
+                while (true) {
+                    try {
+                        String message = in.readLine();
+                        if (message == null) {
+                            break;
+                        }
+                        System.out.println(message);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        break;
+                    }
+                }
+            }).start();
+
             while (true) {
-                new ClientHandler(serverSocket.accept()).start();
+                String message = scanner.nextLine();
+                out.println(message);
             }
         } catch (IOException e) {
             e.printStackTrace();
-        }
-    }
-
-    private static class ClientHandler extends Thread {
-        private Socket socket;
-        private PrintWriter out;
-        private BufferedReader in;
-
-        public ClientHandler(Socket socket) {
-            this.socket = socket;
-        }
-
-        public void run() {
-            try {
-                in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-                out = new PrintWriter(socket.getOutputStream(), true);
-
-                synchronized (clientWriters) {
-                    clientWriters.add(out);
-                }
-
-                String message;
-                while ((message = in.readLine()) != null) {
-                    System.out.println("Received: " + message);
-                    synchronized (clientWriters) {
-                        for (PrintWriter writer : clientWriters) {
-                            writer.println(message);
-                        }
-                    }
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-            } finally {
-                try {
-                    socket.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-                synchronized (clientWriters) {
-                    clientWriters.remove(out);
-                }
-            }
         }
     }
 }
